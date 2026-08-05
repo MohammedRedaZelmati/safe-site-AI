@@ -55,6 +55,16 @@ Stop the stack with `docker compose down`. `docker compose down -v` also deletes
 - [Four-week roadmap](docs/ROADMAP.md)
 - [Architecture explained](docs/ARCHITECTURE.md)
 - [Lesson 1: follow one event](docs/LESSON_01.md)
+- [File catalog](docs/FILE_CATALOG.md)
+
+## Documentation synchronization rule
+
+Whenever a project file is added, removed, or meaningfully changed:
+
+1. Update `docs/FILE_CATALOG.md` with the file's role and latest change.
+2. Update the matching entry in `scripts/generate_file_catalog_pdf.py`.
+3. Regenerate `output/pdf/SafeSite_AI_File_Catalog.pdf`.
+4. Render and visually inspect the PDF before committing.
 
 ## Project rule
 
@@ -65,4 +75,3 @@ understand -> tiny exercise -> implement -> observe -> explain aloud
 ```
 
 If you cannot explain a component without reading the code, it is not finished yet.
-
