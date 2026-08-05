@@ -55,7 +55,14 @@ Stop the stack with `docker compose down`. `docker compose down -v` also deletes
 - [Four-week roadmap](docs/ROADMAP.md)
 - [Architecture explained](docs/ARCHITECTURE.md)
 - [Lesson 1: follow one event](docs/LESSON_01.md)
+- [Lesson 2: safe asynchronous API filtering](docs/LESSON_02.md)
 - [File catalog](docs/FILE_CATALOG.md)
+
+Run the API integration tests with:
+
+```powershell
+docker compose --profile test run --rm api-tests
+```
 
 ## Documentation synchronization rule
 

@@ -25,6 +25,12 @@ SECTIONS = [
         "Root configuration",
         [
             (
+                ".gitattributes",
+                "Marks generated PDFs, images, videos, and model weights as binary Git artifacts.",
+                "Prevents line-ending conversion, whitespace checks, and unreadable text diffs for binary files.",
+                "Added binary rules for PDF, image, video, and PyTorch model artifacts.",
+            ),
+            (
                 ".env.example",
                 "Documents the environment variables required by PostgreSQL and FastAPI.",
                 "Lets developers create a local .env file without committing real credentials.",
@@ -40,13 +46,13 @@ SECTIONS = [
                 "README.md",
                 "Provides the project overview, startup commands, learning links, and working rules.",
                 "Acts as the main entry point for every developer and reviewer.",
-                "Added the file-catalog link and documentation synchronization rule.",
+                "Added the Day 2 lesson link and containerized integration-test command.",
             ),
             (
                 "compose.yaml",
                 "Defines and connects the PostgreSQL and FastAPI containers.",
                 "Starts the current system reproducibly and preserves database data in a volume.",
-                "Initial services, health check, ports, dependency, and named volume added.",
+                "Added the API health check and optional api-tests service profile.",
             ),
         ],
     ),
@@ -68,13 +74,19 @@ SECTIONS = [
                 "services/api/Dockerfile",
                 "Builds the container image that runs the FastAPI application.",
                 "Packages Python, dependencies, source code, and the startup command reproducibly.",
-                "Initial Python 3.12 and Uvicorn image recipe added.",
+                "Split the image into reusable base, runtime, and test build stages.",
             ),
             (
                 "services/api/requirements.txt",
                 "Declares the Python dependencies required by the API.",
                 "Makes dependency installation repeatable in the container.",
                 "FastAPI, Uvicorn, Psycopg, pool, and settings dependencies added.",
+            ),
+            (
+                "services/api/requirements-dev.txt",
+                "Declares dependencies used only by automated API tests.",
+                "Keeps Pytest and HTTPX separate from the production runtime image.",
+                "Added Pytest and HTTPX for black-box integration testing.",
             ),
         ],
     ),
@@ -109,7 +121,18 @@ SECTIONS = [
                 "services/api/app/main.py",
                 "Defines the FastAPI application lifecycle and HTTP routes.",
                 "Exposes health, create, list, filter, and summary operations over PostgreSQL.",
-                "Initial four API routes and parameterized SQL operations added.",
+                "Added inclusive occurrence-time filters and reversed-range validation.",
+            ),
+        ],
+    ),
+    (
+        "API tests",
+        [
+            (
+                "services/api/tests/test_time_filters.py",
+                "Tests time filtering, invalid ranges, and SQL-injection resistance against the running stack.",
+                "Proves that HTTP, validation, SQL, and PostgreSQL work correctly together.",
+                "Added three integration tests with automatic test-data cleanup.",
             ),
         ],
     ),
@@ -129,6 +152,12 @@ SECTIONS = [
                 "Initial Day 1 exercises and explanation checkpoint added.",
             ),
             (
+                "docs/LESSON_02.md",
+                "Contains the second guided lesson and implementation exercise.",
+                "Teaches HTTP, async waiting, pooling, safe SQL, time filters, and tests.",
+                "Initial Day 2 lesson and explanation checkpoint added.",
+            ),
+            (
                 "docs/ROADMAP.md",
                 "Defines the realistic 28-day learning and implementation plan.",
                 "Protects the deadline using must-have, should-have, and stretch priorities.",
@@ -138,7 +167,7 @@ SECTIONS = [
                 "docs/FILE_CATALOG.md",
                 "Provides the human-readable source catalog for maintained project files.",
                 "Keeps file responsibilities and meaningful changes understandable.",
-                "Created and populated with the Day 1 repository state.",
+                "Added Day 2 files and all filtering, testing, container, and lesson changes.",
             ),
         ],
     ),
@@ -149,13 +178,13 @@ SECTIONS = [
                 "scripts/generate_file_catalog_pdf.py",
                 "Generates this polished catalog PDF from maintained metadata.",
                 "Makes future PDF updates consistent and repeatable.",
-                "Initial cover, grouped entries, change register, and page numbering added.",
+                "Added Day 2 entries, updated change descriptions, and regenerated pagination.",
             ),
             (
                 "output/pdf/SafeSite_AI_File_Catalog.pdf",
                 "Provides the printable and shareable form of the file catalog.",
                 "Supports project reviews, learning, and PFE interview preparation.",
-                "First edition generated from the Day 1 project state.",
+                "Regenerated after the Day 2 API, tests, container, README, and lesson changes.",
             ),
         ],
     ),
@@ -252,10 +281,10 @@ def build_pdf() -> None:
         Spacer(1, 12 * mm),
         Table(
             [
-                ["Edition", "Day 1 baseline"],
+                ["Edition", "Day 2"],
                 ["Updated", date(2026, 8, 5).isoformat()],
                 ["Maintained files", str(sum(len(entries) for _, entries in SECTIONS))],
-                ["Current milestone", "Event storage and REST API"],
+                ["Current milestone", "Safe API filtering and tests"],
             ],
             colWidths=[42 * mm, 92 * mm],
             style=TableStyle(
@@ -302,6 +331,11 @@ def build_pdf() -> None:
     story.extend(
         [
             Paragraph("Change register", section),
+            Paragraph("2026-08-05 - Safe time filtering and tests", path_style),
+            Paragraph(
+                "Added inclusive occurrence-time filters, reversed-range validation, a multi-stage test image, black-box integration tests, the Day 2 lesson, and binary Git attributes.",
+                body,
+            ),
             Paragraph("2026-08-05 - File catalog introduced", path_style),
             Paragraph(
                 "Added the Markdown catalog, PDF generator, generated PDF, and README synchronization rule.",
@@ -311,11 +345,6 @@ def build_pdf() -> None:
             Paragraph(
                 "Added Docker Compose, PostgreSQL schema and seed data, FastAPI routes, architecture explanation, Day 1 lesson, and the 28-day roadmap.",
                 body,
-            ),
-            Spacer(1, 10 * mm),
-            Paragraph(
-                "End of catalog - regenerate after every meaningful project change.",
-                subtitle,
             ),
         ]
     )

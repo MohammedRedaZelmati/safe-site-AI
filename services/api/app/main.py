@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
+from datetime import datetime
 
-from fastapi import FastAPI, Query, status
+from fastapi import FastAPI, HTTPException, Query, status
 
 from app.database import close_pool, open_pool, pool
 from app.schemas import Summary, Violation, ViolationCreate, ViolationType
@@ -60,8 +61,16 @@ async def create_violation(payload: ViolationCreate) -> Violation:
 async def list_violations(
     camera_id: str | None = None,
     violation_type: ViolationType | None = None,
+    occurred_from: datetime | None = None,
+    occurred_to: datetime | None = None,
     limit: int = Query(default=50, ge=1, le=200),
 ) -> list[Violation]:
+    if occurred_from is not None and occurred_to is not None and occurred_from > occurred_to:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="occurred_from must be earlier than or equal to occurred_to",
+        )
+
     conditions: list[str] = []
     values: list[object] = []
 
@@ -71,6 +80,12 @@ async def list_violations(
     if violation_type is not None:
         conditions.append("violation_type = %s")
         values.append(violation_type.value)
+    if occurred_from is not None:
+        conditions.append("occurred_at >= %s")
+        values.append(occurred_from)
+    if occurred_to is not None:
+        conditions.append("occurred_at <= %s")
+        values.append(occurred_to)
 
     where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     query = f"""
@@ -105,4 +120,3 @@ async def summary() -> Summary:
         for row in rows
     ]
     return Summary(total=sum(item["count"] for item in by_type), by_type=by_type)
-

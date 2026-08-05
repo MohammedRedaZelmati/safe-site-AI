@@ -1,7 +1,7 @@
 # SafeSite AI File Catalog
 
 **Last updated:** 2026-08-05  
-**Current milestone:** Day 1 complete - event storage and REST API  
+**Current milestone:** Day 2 - safe time filtering and integration tests
 **Purpose:** explain the responsibility of every maintained project file and record meaningful changes.
 
 ## How to maintain this catalog
@@ -17,6 +17,14 @@ Whenever a file is created, removed, or meaningfully changed:
 Generated caches such as `__pycache__`, local secrets such as `.env`, Docker volumes, downloaded models, and temporary render files are not maintained project files and are intentionally excluded.
 
 ## Root configuration
+
+### `.gitattributes`
+
+**Role:** tells Git which project artifacts must be treated as binary files.
+
+**Why it exists:** prevents whitespace checks, line-ending conversion, and unreadable text diffs for PDFs, images, videos, and model weights.
+
+**Latest change:** added binary rules for PDF, image, video, and PyTorch model artifacts.
 
 ### `.env.example`
 
@@ -34,13 +42,13 @@ Generated caches such as `__pycache__`, local secrets such as `.env`, Docker vol
 
 **Role:** main entry point for understanding and running SafeSite AI.  
 **Why it exists:** gives new developers the project goal, current milestone, startup commands, learning links, and working rules.  
-**Latest change:** added the file-catalog link and documentation synchronization rule.
+**Latest change:** added the Day 2 lesson link and containerized integration-test command.
 
 ### `compose.yaml`
 
 **Role:** defines and connects the PostgreSQL and FastAPI containers.  
 **Why it exists:** starts the current system reproducibly with one command and preserves database data in a named volume.  
-**Latest change:** initial Postgres service, API service, health check, ports, network dependency, and volume added.
+**Latest change:** added the API health check and optional `api-tests` service profile.
 
 ## Database
 
@@ -56,13 +64,21 @@ Generated caches such as `__pycache__`, local secrets such as `.env`, Docker vol
 
 **Role:** describes how to build the FastAPI container image.  
 **Why it exists:** packages Python, dependencies, and API source into a reproducible runtime.  
-**Latest change:** initial Python 3.12 image, dependency installation, source copy, and Uvicorn startup command added.
+**Latest change:** split the image into reusable base, runtime, and test build stages.
 
 ### `services/api/requirements.txt`
 
 **Role:** declares the Python libraries required by the API.  
 **Why it exists:** makes dependency installation repeatable inside the container.  
 **Latest change:** FastAPI, Uvicorn, Psycopg, connection-pool, and settings dependencies added.
+
+### `services/api/requirements-dev.txt`
+
+**Role:** declares dependencies used only by automated API tests.
+
+**Why it exists:** keeps test tooling separate from the production runtime image.
+
+**Latest change:** added Pytest and HTTPX for black-box integration testing.
 
 ## API application
 
@@ -94,7 +110,17 @@ Generated caches such as `__pycache__`, local secrets such as `.env`, Docker vol
 
 **Role:** defines the FastAPI application, lifecycle, and HTTP routes.  
 **Why it exists:** exposes health, event creation, event listing, filtering, and summary statistics over PostgreSQL.  
-**Latest change:** initial health, `POST /violations`, `GET /violations`, and `GET /stats/summary` routes added.
+**Latest change:** added inclusive `occurred_from` and `occurred_to` filters plus reversed-range validation.
+
+## API tests
+
+### `services/api/tests/test_time_filters.py`
+
+**Role:** verifies time filtering, invalid ranges, and SQL-injection resistance against the running API and database.
+
+**Why it exists:** proves the HTTP, validation, SQL, and PostgreSQL layers work together rather than testing them only in isolation.
+
+**Latest change:** initial three black-box integration tests and automatic test-data cleanup added.
 
 ## Learning documentation
 
@@ -110,6 +136,14 @@ Generated caches such as `__pycache__`, local secrets such as `.env`, Docker vol
 **Why it exists:** teaches containers, ports, services, schemas, persistence, logs, and the request-to-database flow.  
 **Latest change:** initial Day 1 exercises and explanation checkpoint added.
 
+### `docs/LESSON_02.md`
+
+**Role:** documents the second guided lesson and its implementation exercise.
+
+**Why it exists:** teaches HTTP flow, async waiting, connection pooling, parameterized SQL, time filters, and integration tests.
+
+**Latest change:** initial Day 2 lesson and explanation checkpoint added.
+
 ### `docs/ROADMAP.md`
 
 **Role:** defines the realistic 28-day learning and implementation plan.  
@@ -120,7 +154,7 @@ Generated caches such as `__pycache__`, local secrets such as `.env`, Docker vol
 
 **Role:** human-readable source catalog for every maintained project file.  
 **Why it exists:** helps the learner understand file ownership and keeps documentation synchronized with implementation changes.  
-**Latest change:** catalog created and populated with the Day 1 repository state.
+**Latest change:** added Day 2 files and recorded all filtering, testing, container, and lesson changes.
 
 ## Documentation tooling and output
 
@@ -128,15 +162,23 @@ Generated caches such as `__pycache__`, local secrets such as `.env`, Docker vol
 
 **Role:** generates the polished file-catalog PDF from maintained catalog metadata.  
 **Why it exists:** makes PDF regeneration consistent after future project changes.  
-**Latest change:** initial ReportLab generator with cover, grouped entries, maintenance protocol, change register, and page numbers added.
+**Latest change:** added Day 2 file entries, updated change descriptions, and regenerated pagination.
 
 ### `output/pdf/SafeSite_AI_File_Catalog.pdf`
 
 **Role:** shareable and printable version of the file catalog.  
 **Why it exists:** provides an easy reference during learning, reviews, and PFE interview preparation.  
-**Latest change:** first catalog edition generated from the Day 1 project state.
+**Latest change:** regenerated after the Day 2 API, tests, container, README, and lesson changes.
 
 ## Change register
+
+### 2026-08-05 - Safe time filtering and tests
+
+- Added inclusive occurrence-time filters and reversed-range validation.
+- Added a multi-stage API image and optional integration-test service.
+- Added tests for time ranges and SQL-injection resistance.
+- Added `docs/LESSON_02.md` and updated the maintained catalog.
+- Added `.gitattributes` so generated artifacts are handled as binary files.
 
 ### 2026-08-05 - File catalog introduced
 
@@ -151,4 +193,3 @@ Generated caches such as `__pycache__`, local secrets such as `.env`, Docker vol
 - Added the violation schema and seed data.
 - Added health, create, list, filter, and summary endpoints.
 - Added the architecture, Day 1 lesson, and 28-day roadmap.
-
