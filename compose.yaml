@@ -47,5 +47,12 @@ services:
       api:
         condition: service_healthy
 
+  ingestion:
+    profiles: ["tools"]
+    build:
+      context: ./services/ingestion
+    volumes:
+      - ./data:/data
+
 volumes:
   postgres_data:

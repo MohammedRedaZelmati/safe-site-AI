@@ -46,13 +46,13 @@ SECTIONS = [
                 "README.md",
                 "Provides the project overview, startup commands, learning links, and working rules.",
                 "Acts as the main entry point for every developer and reviewer.",
-                "Added the Day 2 lesson link and containerized integration-test command.",
+                "Added the Day 3 video lesson and reproducible ingestion exercise commands.",
             ),
             (
                 "compose.yaml",
                 "Defines and connects the PostgreSQL and FastAPI containers.",
                 "Starts the current system reproducibly and preserves database data in a volume.",
-                "Added the API health check and optional api-tests service profile.",
+                "Added the optional ingestion tools profile with a bind-mounted data workspace.",
             ),
         ],
     ),
@@ -137,6 +137,46 @@ SECTIONS = [
         ],
     ),
     (
+        "Ingestion container",
+        [
+            (
+                "services/ingestion/Dockerfile",
+                "Builds the reproducible OpenCV environment for video-ingestion tools.",
+                "Gives every developer the same Python, decoder, and image-processing runtime.",
+                "Added the Python 3.12 image, OpenCV installation, application copy, and help command.",
+            ),
+            (
+                "services/ingestion/requirements.txt",
+                "Declares the ingestion service's OpenCV dependency.",
+                "Makes video decoding, generation, and image writing reproducible inside Docker.",
+                "Added the supported OpenCV headless version range.",
+            ),
+        ],
+    ),
+    (
+        "Ingestion application",
+        [
+            (
+                "services/ingestion/app/__init__.py",
+                "Marks the ingestion app directory as a Python package.",
+                "Allows tools to run consistently with python -m app.<module>.",
+                "Initial package marker added.",
+            ),
+            (
+                "services/ingestion/app/generate_demo_video.py",
+                "Generates a controlled MP4 with known timing, resolution, and frame count.",
+                "Provides deterministic input without relying on personal or downloaded footage.",
+                "Added configurable generation and a moving PPE-equipped worker scene.",
+            ),
+            (
+                "services/ingestion/app/sample_frames.py",
+                "Samples video frames by time and writes JPEG evidence plus JSONL metadata.",
+                "Establishes the ingestion contract later consumed by Kafka, MinIO, and YOLO.",
+                "Added validation, time-based sampling, traceable names, and metadata records.",
+            ),
+        ],
+    ),
+    (
         "Learning documentation",
         [
             (
@@ -158,6 +198,12 @@ SECTIONS = [
                 "Initial Day 2 lesson and explanation checkpoint added.",
             ),
             (
+                "docs/LESSON_03.md",
+                "Contains the video-fundamentals lesson and frame-sampling exercise.",
+                "Teaches FPS, resolution, codecs, timestamps, sampling, and JSONL metadata.",
+                "Added the Day 3 lesson, Docker commands, contract, and checkpoint.",
+            ),
+            (
                 "docs/ROADMAP.md",
                 "Defines the realistic 28-day learning and implementation plan.",
                 "Protects the deadline using must-have, should-have, and stretch priorities.",
@@ -167,7 +213,7 @@ SECTIONS = [
                 "docs/FILE_CATALOG.md",
                 "Provides the human-readable source catalog for maintained project files.",
                 "Keeps file responsibilities and meaningful changes understandable.",
-                "Added Day 2 files and all filtering, testing, container, and lesson changes.",
+                "Added all Day 3 ingestion files and recorded video generation and sampling changes.",
             ),
         ],
     ),
@@ -178,13 +224,13 @@ SECTIONS = [
                 "scripts/generate_file_catalog_pdf.py",
                 "Generates this polished catalog PDF from maintained metadata.",
                 "Makes future PDF updates consistent and repeatable.",
-                "Added Day 2 entries, updated change descriptions, and regenerated pagination.",
+                "Added Day 3 ingestion entries, milestone metadata, and regenerated pagination.",
             ),
             (
                 "output/pdf/SafeSite_AI_File_Catalog.pdf",
                 "Provides the printable and shareable form of the file catalog.",
                 "Supports project reviews, learning, and PFE interview preparation.",
-                "Regenerated after the Day 2 API, tests, container, README, and lesson changes.",
+                "Regenerated after the Day 3 ingestion service, tools, README, Compose, and lesson changes.",
             ),
         ],
     ),
@@ -281,10 +327,10 @@ def build_pdf() -> None:
         Spacer(1, 12 * mm),
         Table(
             [
-                ["Edition", "Day 2"],
-                ["Updated", date(2026, 8, 5).isoformat()],
+                ["Edition", "Day 3"],
+                ["Updated", date(2026, 8, 6).isoformat()],
                 ["Maintained files", str(sum(len(entries) for _, entries in SECTIONS))],
-                ["Current milestone", "Safe API filtering and tests"],
+                ["Current milestone", "Video timing and frame sampling"],
             ],
             colWidths=[42 * mm, 92 * mm],
             style=TableStyle(
@@ -331,14 +377,14 @@ def build_pdf() -> None:
     story.extend(
         [
             Paragraph("Change register", section),
+            Paragraph("2026-08-06 - Video timing and frame sampling", path_style),
+            Paragraph(
+                "Added a reproducible OpenCV ingestion container, controlled demo-video generation, time-based JPEG sampling, JSONL metadata, fractional-FPS validation, and the Day 3 lesson.",
+                body,
+            ),
             Paragraph("2026-08-05 - Safe time filtering and tests", path_style),
             Paragraph(
                 "Added inclusive occurrence-time filters, reversed-range validation, a multi-stage test image, black-box integration tests, the Day 2 lesson, and binary Git attributes.",
-                body,
-            ),
-            Paragraph("2026-08-05 - File catalog introduced", path_style),
-            Paragraph(
-                "Added the Markdown catalog, PDF generator, generated PDF, and README synchronization rule.",
                 body,
             ),
             Paragraph("2026-08-04 - Initial vertical slice", path_style),

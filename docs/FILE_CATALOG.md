@@ -1,7 +1,7 @@
 # SafeSite AI File Catalog
 
-**Last updated:** 2026-08-05  
-**Current milestone:** Day 2 - safe time filtering and integration tests
+**Last updated:** 2026-08-06
+**Current milestone:** Day 3 - video timing and frame sampling
 **Purpose:** explain the responsibility of every maintained project file and record meaningful changes.
 
 ## How to maintain this catalog
@@ -42,13 +42,13 @@ Generated caches such as `__pycache__`, local secrets such as `.env`, Docker vol
 
 **Role:** main entry point for understanding and running SafeSite AI.  
 **Why it exists:** gives new developers the project goal, current milestone, startup commands, learning links, and working rules.  
-**Latest change:** added the Day 2 lesson link and containerized integration-test command.
+**Latest change:** added the Day 3 video lesson and reproducible ingestion exercise commands.
 
 ### `compose.yaml`
 
 **Role:** defines and connects the PostgreSQL and FastAPI containers.  
 **Why it exists:** starts the current system reproducibly with one command and preserves database data in a named volume.  
-**Latest change:** added the API health check and optional `api-tests` service profile.
+**Latest change:** added the optional `ingestion` tools profile with a bind-mounted data workspace.
 
 ## Database
 
@@ -122,6 +122,50 @@ Generated caches such as `__pycache__`, local secrets such as `.env`, Docker vol
 
 **Latest change:** initial three black-box integration tests and automatic test-data cleanup added.
 
+## Ingestion container
+
+### `services/ingestion/Dockerfile`
+
+**Role:** builds the reproducible OpenCV environment used by video-ingestion exercises.
+
+**Why it exists:** avoids depending on the host's Python packages and gives every developer the same decoder and runtime.
+
+**Latest change:** initial Python 3.12, OpenCV dependency, application copy, and help command added.
+
+### `services/ingestion/requirements.txt`
+
+**Role:** declares the ingestion service's OpenCV dependency.
+
+**Why it exists:** makes video decoding, generation, and image writing reproducible inside Docker.
+
+**Latest change:** added the supported OpenCV headless version range.
+
+## Ingestion application
+
+### `services/ingestion/app/__init__.py`
+
+**Role:** marks the ingestion `app` directory as a Python package.
+
+**Why it exists:** allows the tools to run consistently with `python -m app.<module>`.
+
+**Latest change:** initial package marker added.
+
+### `services/ingestion/app/generate_demo_video.py`
+
+**Role:** generates a controlled synthetic MP4 with known duration, FPS, resolution, frame count, and visible timing.
+
+**Why it exists:** provides safe, deterministic video input without relying on personal or downloaded footage.
+
+**Latest change:** added configurable video generation and a moving PPE-equipped worker scene.
+
+### `services/ingestion/app/sample_frames.py`
+
+**Role:** reads video metadata, samples frames by video time, saves JPEG evidence, and writes JSONL metadata.
+
+**Why it exists:** establishes the first ingestion contract that later Kafka, MinIO, and YOLO services will consume.
+
+**Latest change:** added FPS validation, time-based sampling, traceable filenames, and frame metadata records.
+
 ## Learning documentation
 
 ### `docs/ARCHITECTURE.md`
@@ -144,6 +188,14 @@ Generated caches such as `__pycache__`, local secrets such as `.env`, Docker vol
 
 **Latest change:** initial Day 2 lesson and explanation checkpoint added.
 
+### `docs/LESSON_03.md`
+
+**Role:** documents the video-fundamentals lesson and frame-sampling exercise.
+
+**Why it exists:** teaches frames, FPS, resolution, codecs, containers, timestamps, sampling, and JSONL metadata.
+
+**Latest change:** initial Day 3 lesson, Docker commands, metadata contract, and explanation checkpoint added.
+
 ### `docs/ROADMAP.md`
 
 **Role:** defines the realistic 28-day learning and implementation plan.  
@@ -154,7 +206,7 @@ Generated caches such as `__pycache__`, local secrets such as `.env`, Docker vol
 
 **Role:** human-readable source catalog for every maintained project file.  
 **Why it exists:** helps the learner understand file ownership and keeps documentation synchronized with implementation changes.  
-**Latest change:** added Day 2 files and recorded all filtering, testing, container, and lesson changes.
+**Latest change:** added all Day 3 ingestion files and recorded the video-generation and sampling changes.
 
 ## Documentation tooling and output
 
@@ -162,15 +214,24 @@ Generated caches such as `__pycache__`, local secrets such as `.env`, Docker vol
 
 **Role:** generates the polished file-catalog PDF from maintained catalog metadata.  
 **Why it exists:** makes PDF regeneration consistent after future project changes.  
-**Latest change:** added Day 2 file entries, updated change descriptions, and regenerated pagination.
+**Latest change:** added Day 3 ingestion entries, updated milestone metadata, and regenerated pagination.
 
 ### `output/pdf/SafeSite_AI_File_Catalog.pdf`
 
 **Role:** shareable and printable version of the file catalog.  
 **Why it exists:** provides an easy reference during learning, reviews, and PFE interview preparation.  
-**Latest change:** regenerated after the Day 2 API, tests, container, README, and lesson changes.
+**Latest change:** regenerated after the Day 3 ingestion service, tools, README, Compose, and lesson changes.
 
 ## Change register
+
+### 2026-08-06 - Video timing and frame sampling
+
+- Added the reproducible OpenCV ingestion tools container.
+- Added a controlled six-second demo-video generator.
+- Added time-based frame sampling with JPEG and JSONL outputs.
+- Verified 180 source frames produce 30 samples at 5 FPS.
+- Verified 29.97 FPS input is sampled correctly by time.
+- Added `docs/LESSON_03.md` and updated the maintained catalog.
 
 ### 2026-08-05 - Safe time filtering and tests
 

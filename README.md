@@ -56,12 +56,21 @@ Stop the stack with `docker compose down`. `docker compose down -v` also deletes
 - [Architecture explained](docs/ARCHITECTURE.md)
 - [Lesson 1: follow one event](docs/LESSON_01.md)
 - [Lesson 2: safe asynchronous API filtering](docs/LESSON_02.md)
+- [Lesson 3: video frames, timing, and sampling](docs/LESSON_03.md)
 - [File catalog](docs/FILE_CATALOG.md)
 
 Run the API integration tests with:
 
 ```powershell
 docker compose --profile test run --rm api-tests
+```
+
+Run the video-sampling exercise with:
+
+```powershell
+docker compose --profile tools build ingestion
+docker compose --profile tools run --rm ingestion python -m app.generate_demo_video --output /data/demo/source.mp4
+docker compose --profile tools run --rm ingestion python -m app.sample_frames --input /data/demo/source.mp4 --output-dir /data/demo/sample-5fps --target-fps 5 --camera-id camera-demo
 ```
 
 ## Documentation synchronization rule
