@@ -1,7 +1,9 @@
 from contextlib import asynccontextmanager
 from datetime import datetime
+from hashlib import sha256
+import json
 
-from fastapi import FastAPI, HTTPException, Query, status
+from fastapi import FastAPI, HTTPException, Query, Response, status
 
 from app.database import close_pool, open_pool, pool
 from app.schemas import Summary, Violation, ViolationCreate, ViolationType
@@ -29,8 +31,22 @@ async def health() -> dict[str, str]:
     return {"status": "healthy", "database": "reachable"}
 
 
+def event_key_for(payload: ViolationCreate) -> str:
+    canonical_event = {
+        "camera_id": payload.camera_id,
+        "confidence": payload.confidence,
+        "frame_uri": payload.frame_uri,
+        "occurred_at": payload.occurred_at.isoformat(),
+        "track_id": payload.track_id,
+        "violation_type": payload.violation_type.value,
+    }
+    encoded = json.dumps(canonical_event, sort_keys=True, separators=(",", ":")).encode()
+    return sha256(encoded).hexdigest()
+
+
 @app.post("/violations", response_model=Violation, status_code=status.HTTP_201_CREATED)
-async def create_violation(payload: ViolationCreate) -> Violation:
+async def create_violation(payload: ViolationCreate, response: Response) -> Violation:
+    event_key = event_key_for(payload)
     query = """
         INSERT INTO violations (
             occurred_at,
@@ -38,9 +54,11 @@ async def create_violation(payload: ViolationCreate) -> Violation:
             track_id,
             violation_type,
             confidence,
-            frame_uri
+            frame_uri,
+            event_key
         )
-        VALUES (%s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (event_key) WHERE event_key IS NOT NULL DO NOTHING
         RETURNING *
     """
     values = (
@@ -50,10 +68,18 @@ async def create_violation(payload: ViolationCreate) -> Violation:
         payload.violation_type.value,
         payload.confidence,
         payload.frame_uri,
+        event_key,
     )
     async with pool.connection() as connection:
         cursor = await connection.execute(query, values)
         row = await cursor.fetchone()
+        if row is None:
+            response.status_code = status.HTTP_200_OK
+            cursor = await connection.execute(
+                "SELECT * FROM violations WHERE event_key = %s",
+                (event_key,),
+            )
+            row = await cursor.fetchone()
     return Violation.model_validate(row)
 
 

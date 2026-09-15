@@ -1,6 +1,52 @@
 name: safesite-ai
 
 services:
+  kafka:
+    image: apache/kafka:4.3.1
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: INTERNAL://:29092,CONTROLLER://:29093,EXTERNAL://:9092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_NUM_PARTITIONS: 3
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+    ports:
+      - "9092:9092"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+
+  minio:
+    image: minio/minio:RELEASE.2025-06-13T11-33-47Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-safesite}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-safesite_dev_password}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
   postgres:
     image: postgres:16-alpine
     environment:
@@ -22,6 +68,8 @@ services:
     build:
       context: ./services/api
       target: runtime
+    volumes:
+      - ./services/api/app:/app/app:ro
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://safesite:safesite_dev_password@postgres:5432/safesite}
     ports:
@@ -51,8 +99,368 @@ services:
     profiles: ["tools"]
     build:
       context: ./services/ingestion
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-safesite}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-safesite_dev_password}
+    volumes:
+      - ./data:/data
+    depends_on:
+      kafka:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  gold-analytics:
+    profiles: ["analytics"]
+    build:
+      context: ./services/ingestion
+    command:
+      - python
+      - -m
+      - app.run_gold_analytics
+      - --input-dir
+      - ${SAFESITE_GOLD_RECORDS_DIR:-/data/workers/tracking/records}
+      - --output-dir
+      - ${SAFESITE_GOLD_PARQUET_DIR:-/data/lake/gold/parquet}
+      - --overwrite
     volumes:
       - ./data:/data
 
+  ppe-inference-worker:
+    profiles: ["streaming"]
+    build:
+      context: ./services/ingestion
+    command:
+      - python
+      - -m
+      - app.infer_frame_events
+      - --input-topic
+      - ${SAFESITE_RAW_TOPIC:-safesite.frames.raw}
+      - --output-topic
+      - ${SAFESITE_PPE_TOPIC:-safesite.ppe.detections}
+      - --group-id
+      - ${SAFESITE_INFERENCE_GROUP:-safesite-ppe-inference-live}
+      - --output-dir
+      - ${SAFESITE_INFERENCE_OUTPUT_DIR:-/data/workers/ppe-inference}
+      - --model
+      - ${SAFESITE_PPE_MODEL:-/data/training/ppe-baseline-e10-full-img320/weights/best.pt}
+      - --confidence
+      - "0.25"
+      - --image-size
+      - "320"
+      - --device
+      - cpu
+      - --continuous
+      - --heartbeat-file
+      - /data/workers/heartbeats/ppe-inference.json
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-safesite}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-safesite_dev_password}
+    volumes:
+      - ./data:/data
+    depends_on:
+      kafka:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+
+  tracking-worker:
+    profiles: ["streaming"]
+    build:
+      context: ./services/ingestion
+    command:
+      - python
+      - -m
+      - app.process_ppe_stream
+      - --input-topic
+      - ${SAFESITE_PPE_TOPIC:-safesite.ppe.detections}
+      - --track-topic
+      - ${SAFESITE_TRACK_TOPIC:-safesite.tracks}
+      - --candidate-topic
+      - ${SAFESITE_CANDIDATE_TOPIC:-safesite.candidate-violations}
+      - --group-id
+      - ${SAFESITE_TRACKING_GROUP:-safesite-ppe-tracker-live}
+      - --output-dir
+      - ${SAFESITE_TRACKING_OUTPUT_DIR:-/data/workers/tracking}
+      - --tracking-model
+      - ${SAFESITE_TRACKING_MODEL:-/data/models/yolo26n.pt}
+      - --tracking-confidence
+      - "0.25"
+      - --image-size
+      - "640"
+      - --device
+      - cpu
+      - --window-size
+      - "5"
+      - --evidence-threshold
+      - "3"
+      - --cooldown-ms
+      - "10000"
+      - --maximum-opposite-evidence
+      - "0"
+      - --max-cameras
+      - ${SAFESITE_MAX_CAMERAS:-3}
+      - --continuous
+      - --heartbeat-file
+      - /data/workers/heartbeats/tracking.json
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-safesite}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-safesite_dev_password}
+    volumes:
+      - ./data:/data
+    depends_on:
+      kafka:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      ppe-inference-worker:
+        condition: service_started
+    restart: unless-stopped
+
+  camera-ingestion-worker:
+    profiles: ["streaming"]
+    build:
+      context: ./services/ingestion
+    command:
+      - python
+      - -m
+      - app.stream_camera
+      - --source
+      - ${SAFESITE_CAMERA_SOURCE:-/data/videos/external/pexels-8965526.mp4}
+      - --camera-id
+      - ${SAFESITE_CAMERA_ID:-camera-live-01}
+      - --topic
+      - ${SAFESITE_RAW_TOPIC:-safesite.frames.raw}
+      - --sample-fps
+      - ${SAFESITE_CAMERA_SAMPLE_FPS:-5}
+      - --object-prefix
+      - live-frames
+      - --loop
+      - --realtime
+      - --heartbeat-file
+      - /data/workers/heartbeats/camera-ingestion.json
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-safesite}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-safesite_dev_password}
+    volumes:
+      - ./data:/data
+    depends_on:
+      kafka:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+
+  candidate-api-worker:
+    profiles: ["streaming"]
+    build:
+      context: ./services/ingestion
+    command:
+      - python
+      - -m
+      - app.consume_candidate_events
+      - --topic
+      - ${SAFESITE_CANDIDATE_TOPIC:-safesite.candidate-violations}
+      - --dead-letter-topic
+      - ${SAFESITE_DEAD_LETTER_TOPIC:-safesite.candidate-violations.dlq}
+      - --group-id
+      - ${SAFESITE_DELIVERY_GROUP:-safesite-candidate-api-live}
+      - --output-dir
+      - ${SAFESITE_DELIVERY_OUTPUT_DIR:-/data/workers/candidate-delivery}
+      - --api-url
+      - http://api:8000
+      - --max-attempts
+      - "3"
+      - --retry-backoff-seconds
+      - "1"
+      - --continuous
+      - --heartbeat-file
+      - /data/workers/heartbeats/candidate-api.json
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    volumes:
+      - ./data:/data
+    depends_on:
+      kafka:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  stream-monitor:
+    profiles: ["streaming"]
+    build:
+      context: ./services/ingestion
+    command:
+      - python
+      - -m
+      - app.monitor_streaming
+      - --pipeline
+      - raw=${SAFESITE_RAW_TOPIC:-safesite.frames.raw},${SAFESITE_INFERENCE_GROUP:-safesite-ppe-inference-live}
+      - --pipeline
+      - ppe=${SAFESITE_PPE_TOPIC:-safesite.ppe.detections},${SAFESITE_TRACKING_GROUP:-safesite-ppe-tracker-live}
+      - --pipeline
+      - candidates=${SAFESITE_CANDIDATE_TOPIC:-safesite.candidate-violations},${SAFESITE_DELIVERY_GROUP:-safesite-candidate-api-live}
+      - --heartbeat
+      - camera=/data/workers/heartbeats/camera-ingestion.json
+      - --heartbeat
+      - inference=/data/workers/heartbeats/ppe-inference.json
+      - --heartbeat
+      - tracking=/data/workers/heartbeats/tracking.json
+      - --heartbeat
+      - delivery=/data/workers/heartbeats/candidate-api.json
+      - --output
+      - /data/workers/health-report.json
+      - --lag-warning
+      - ${SAFESITE_LAG_WARNING:-10}
+      - --stale-after-seconds
+      - ${SAFESITE_HEARTBEAT_STALE_SECONDS:-20}
+      - --continuous
+      - --interval-seconds
+      - "10"
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    volumes:
+      - ./data:/data
+    depends_on:
+      camera-ingestion-worker:
+        condition: service_started
+      ppe-inference-worker:
+        condition: service_started
+      tracking-worker:
+        condition: service_started
+      candidate-api-worker:
+        condition: service_started
+      api:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+
+  agent:
+    profiles: ["agent"]
+    build:
+      context: ./services/agent
+    environment:
+      AGENT_DATABASE_URL: ${AGENT_DATABASE_URL:-postgresql://safesite_agent:safesite_agent_dev_password@postgres:5432/safesite}
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+      OLLAMA_TEXT_MODEL: ${OLLAMA_TEXT_MODEL:-llama3.2:latest}
+      OLLAMA_VISION_MODEL: ${OLLAMA_VISION_MODEL:-qwen2.5vl:3b}
+      SAFESITE_DATA_ROOT: /data
+    ports:
+      - "8010:8010"
+    volumes:
+      - ./data:/data:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8010/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  dashboard:
+    profiles: ["ui"]
+    build:
+      context: ./services/dashboard
+    environment:
+      SAFESITE_API_URL: http://api:8000
+      SAFESITE_AGENT_URL: http://agent:8010
+      SAFESITE_DATA_ROOT: /data
+    ports:
+      - "8502:8502"
+    volumes:
+      - ./data:/data:ro
+    depends_on:
+      api:
+        condition: service_healthy
+      agent:
+        condition: service_healthy
+
+  mlflow:
+    profiles: ["mlops"]
+    build:
+      context: ./services/mlops
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  drift-monitor:
+    profiles: ["monitoring"]
+    build:
+      context: ./services/monitoring
+    command:
+      - --baseline-manifest
+      - /data/videos/processed/pexels-8965526-first-10s-5fps/frames.jsonl
+      - --baseline-predictions
+      - /data/inference/ppe-baseline-e10/pexels-first-10s-conf-025/predictions.jsonl
+      - --current-manifest
+      - /data/demo/mvp-20260815-223655/frames/frames.jsonl
+      - --current-predictions
+      - /data/demo/mvp-20260815-223655/ppe/predictions.jsonl
+      - --data-root
+      - /data
+      - --minimum-confidence
+      - "0.25"
+      - --output
+      - /data/monitoring/drift-report.json
+    volumes:
+      - ./data:/data
+
+  event-quality:
+    profiles: ["monitoring"]
+    build:
+      context: ./services/monitoring
+    entrypoint: ["python", "validate_events.py"]
+    command:
+      - --api-url
+      - http://api:8000
+      - --output
+      - /data/monitoring/event-quality-report.json
+    volumes:
+      - ./data:/data
+    depends_on:
+      api:
+        condition: service_healthy
+
+  airflow:
+    profiles: ["orchestration"]
+    build:
+      context: ./orchestration/airflow
+    command: standalone
+    environment:
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
+      PYTHONPATH: /opt/airflow/safesite
+      SAFESITE_GOLD_RECORDS_DIR: /data/workers/tracking/records
+      SAFESITE_GOLD_PARQUET_DIR: /data/lake/gold/parquet
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./orchestration/airflow/dags:/opt/airflow/dags:ro
+      - ./services/ingestion/app:/opt/airflow/safesite/app:ro
+      - ./data:/data
+
 volumes:
+  kafka_data:
+  minio_data:
   postgres_data:

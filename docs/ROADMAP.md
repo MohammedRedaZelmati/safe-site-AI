@@ -1,5 +1,9 @@
 # SafeSite AI: 28-Day Roadmap
 
+## Completion status - 2026-09-01
+
+The full target and all original stretch layers are now implemented: Kafka, MinIO, continuous multi-camera workers, Gold Parquet, Streamlit, Airflow, Great Expectations, drift monitoring, MLflow run comparison and registry, a read-only LangGraph assistant, and Qwen vision support. The PPE model remains honestly labeled as an experimental baseline; architecture completion does not imply production detection accuracy. See `docs/FINAL_ARCHITECTURE.md` and `data/final/final-architecture-proof.json`.
+
 ## The realistic target
 
 At the end of one month, the required demo is:
@@ -212,4 +216,3 @@ Plan for 3 to 5 focused hours per day:
 8. How would this architecture change for 100 real cameras?
 9. How do you prevent a text-to-SQL agent from modifying data?
 10. What failed during the project, and what evidence guided your fix?
-

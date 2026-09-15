@@ -21,6 +21,7 @@ class ViolationCreate(BaseModel):
 
 class Violation(ViolationCreate):
     id: int
+    event_key: str | None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -34,4 +35,3 @@ class ViolationCount(BaseModel):
 class Summary(BaseModel):
     total: int
     by_type: list[ViolationCount]
-

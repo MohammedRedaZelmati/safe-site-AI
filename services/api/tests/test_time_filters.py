@@ -85,3 +85,29 @@ def test_camera_filter_treats_sql_as_plain_text() -> None:
     assert response.status_code == 200
     assert response.json() == []
 
+
+def test_duplicate_event_returns_existing_row(camera_id: str) -> None:
+    payload = {
+        "occurred_at": "2026-08-05T14:00:00Z",
+        "camera_id": camera_id,
+        "track_id": 9,
+        "violation_type": "NO_HELMET",
+        "confidence": 0.93,
+        "frame_uri": f"silver/{camera_id}/9.jpg",
+    }
+
+    first = httpx.post(f"{API_BASE_URL}/violations", json=payload, timeout=10)
+    duplicate = httpx.post(f"{API_BASE_URL}/violations", json=payload, timeout=10)
+
+    assert first.status_code == 201
+    assert duplicate.status_code == 200
+    assert duplicate.json()["id"] == first.json()["id"]
+    assert duplicate.json()["event_key"] == first.json()["event_key"]
+    assert len(first.json()["event_key"]) == 64
+
+    with psycopg.connect(DATABASE_URL) as connection:
+        count = connection.execute(
+            "SELECT COUNT(*) FROM violations WHERE camera_id = %s AND track_id = 9",
+            (camera_id,),
+        ).fetchone()[0]
+    assert count == 1
