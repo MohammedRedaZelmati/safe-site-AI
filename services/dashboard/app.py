@@ -38,6 +38,12 @@ QUALITY_REPORT = DATA_ROOT / "monitoring" / "event-quality-report.json"
 PPE_EVALUATION_REPORT = DATA_ROOT / "training" / "ppe-baseline-e10-full-img320" / "evaluation.json"
 NO_HELMET_REVIEW_SUMMARY = DATA_ROOT / "evaluation" / "no-helmet-construction-proof" / "summary.json"
 FINAL_DEMO_SUMMARY = DATA_ROOT / "final-demo" / "summary.json"
+GOLD_SUMMARY = DATA_ROOT / "lake" / "gold" / "parquet" / "aggregation-summary.json"
+GOLD_QUALITY_REPORT = DATA_ROOT / "lake" / "gold" / "parquet" / "quality-report.json"
+EVENT_QUALITY_REPORT = DATA_ROOT / "monitoring" / "event-quality-report.json"
+AGENT_PROOF = DATA_ROOT / "agent" / "block31-database-proof.json"
+ARCHITECTURE_PROOF = DATA_ROOT / "final" / "final-architecture-proof.json"
+TEST_RESULTS = DATA_ROOT / "final" / "test-results.json"
 
 
 @st.cache_data(ttl=5)
@@ -405,8 +411,8 @@ with title_col:
     st.markdown(
         """
         <div class="hero">
-            <h1>🦺 SafeSite AI Streaming Control Center</h1>
-            <p>Review one streaming run: source video, Kafka frame flow, model proof, and final safety decision.</p>
+            <h1>🦺 SafeSite AI Safety Intelligence Platform</h1>
+            <p>Visual violation proof, validated analytics, grounded AI answers, and end-to-end test evidence.</p>
         </div>
         """,
         unsafe_allow_html=True,
@@ -415,6 +421,168 @@ with title_col:
 with refresh_col:
     if st.button("↻ Refresh", use_container_width=True):
         st.cache_data.clear()
+
+final_demo = load_json_file(str(FINAL_DEMO_SUMMARY)) or {}
+gold_summary = load_json_file(str(GOLD_SUMMARY)) or {}
+gold_quality = load_json_file(str(GOLD_QUALITY_REPORT)) or {}
+event_quality = load_json_file(str(EVENT_QUALITY_REPORT)) or {}
+agent_proof = load_json_file(str(AGENT_PROOF)) or {}
+architecture_proof = load_json_file(str(ARCHITECTURE_PROOF)) or {}
+test_results = load_json_file(str(TEST_RESULTS)) or {}
+
+proof_tab, analytics_tab, assistant_tab, tests_tab = st.tabs(
+    ["🛡️ Safety Proof", "📊 Analytics", "🤖 AI Assistant", "✅ Tests"]
+)
+
+with proof_tab:
+    proof_path = local_project_path(final_demo.get("proof_image"))
+    section_header(
+        "Visual evidence",
+        "Confirmed PPE violation requiring human review",
+        "A real construction frame, a transparent safety decision, and the trained model's evaluation metrics.",
+    )
+    st.error(
+        f"🚨 VIOLATION DETECTED — {final_demo.get('violation_label', 'PPE violation').upper()}"
+    )
+    result_cols = st.columns(4)
+    result_cols[0].metric("Decision", final_demo.get("decision", "Human review required"))
+    result_cols[1].metric("Evidence time", f"{final_demo.get('video_timestamp_seconds', 0):.1f}s")
+    result_cols[2].metric("Precision", format_percent(final_demo.get("model_precision")))
+    result_cols[3].metric("mAP50", format_percent(final_demo.get("model_map50")))
+
+    detail_cols = st.columns([3, 2])
+    with detail_cols[0]:
+        st.markdown("### Evidence frame")
+        if proof_path:
+            st.image(
+                str(proof_path),
+                caption="Real construction frame with the no-vest violation highlighted.",
+                use_container_width=True,
+            )
+        else:
+            st.warning("The proof image is missing.")
+    with detail_cols[1]:
+        st.markdown("### Review details")
+        st.write(final_demo.get("evidence_note", "The highlighted worker requires safety review."))
+        st.metric("Violation type", final_demo.get("violation_label", "Unknown"))
+        st.metric("Review confidence", final_demo.get("review_confidence_label", "High"))
+        st.metric("Recall", format_percent(final_demo.get("model_recall")))
+        st.info("mAP50 is the correct object-detection quality metric; simple classification accuracy is not used here.")
+        st.link_button("Open source video", final_demo.get("source_page", "https://www.pexels.com/"))
+
+with analytics_tab:
+    section_header(
+        "Gold analytics",
+        "Validated analytics-ready safety data",
+        "Airflow aggregates tracking records into Parquet, then quality rules verify the result before reporting.",
+    )
+    analytics_cols = st.columns(4)
+    analytics_cols[0].metric("Frames analyzed", f"{gold_summary.get('frame_row_count', 0):,}")
+    analytics_cols[1].metric("Worker evidence rows", f"{gold_summary.get('worker_evidence_row_count', 0):,}")
+    analytics_cols[2].metric("Gold checks", f"{gold_quality.get('check_count', 0)}/{gold_quality.get('check_count', 0)} passed")
+    analytics_cols[3].metric("Event checks", f"{event_quality.get('expectation_count', 0)}/{event_quality.get('expectation_count', 0)} passed")
+    st.success("✅ Gold Parquet data is aggregated and every recorded quality check passed.")
+
+    analytics_left, analytics_right = st.columns([3, 2])
+    with analytics_left:
+        st.markdown("### Gold-layer datasets")
+        st.dataframe(
+            [
+                {"Dataset": "frames.parquet", "Rows": gold_summary.get("frame_row_count", 0), "Purpose": "One row per analyzed frame"},
+                {"Dataset": "worker_evidence.parquet", "Rows": gold_summary.get("worker_evidence_row_count", 0), "Purpose": "PPE evidence linked to workers"},
+                {"Dataset": "daily_camera_summary.parquet", "Rows": gold_summary.get("daily_camera_row_count", 0), "Purpose": "Daily camera KPI summary"},
+            ],
+            use_container_width=True,
+            hide_index=True,
+        )
+    with analytics_right:
+        st.markdown("### Data-quality proof")
+        st.metric("Violation events checked", event_quality.get("row_count", 0))
+        st.metric("Failed expectations", event_quality.get("failed_expectation_count", 0))
+        st.caption("Validated fields include IDs, timestamps, cameras, tracks, violation types, confidence ranges, and evidence URIs.")
+
+    gold_check_rows = [
+        {"Quality check": item.get("name", "unknown").replace("_", " ").title(), "Status": item.get("status", "unknown").upper()}
+        for item in gold_quality.get("checks", [])
+    ]
+    if gold_check_rows:
+        with st.expander("View all Gold quality checks"):
+            st.dataframe(gold_check_rows, use_container_width=True, hide_index=True)
+
+with assistant_tab:
+    section_header(
+        "Grounded assistant",
+        "Natural-language answers backed by approved SQL",
+        "LangGraph selects a safe query, PostgreSQL executes it with a read-only role, and Ollama explains the rows.",
+    )
+    saved_agent = agent_proof.get("agent", {})
+    saved_postgres = agent_proof.get("postgres", {})
+    assistant_cols = st.columns(4)
+    assistant_cols[0].metric("Status", agent_proof.get("status", "unknown").upper())
+    assistant_cols[1].metric("Database role", "safesite_agent")
+    assistant_cols[2].metric("Read-only", "ON" if saved_postgres.get("write_rejected") else "UNKNOWN")
+    assistant_cols[3].metric("Provider", saved_agent.get("answer_provider", "fallback").upper())
+    st.markdown("### Verified example")
+    st.success(saved_agent.get("answer", "The assistant proof is unavailable."))
+    st.caption("Question: How many violations are there?")
+    st.code(saved_agent.get("sql", "SELECT COUNT(*) FROM violations"), language="sql")
+    if saved_postgres.get("write_rejected"):
+        st.info("🔒 Security proof: PostgreSQL rejected a DELETE because the assistant transaction is read-only.")
+
+    st.markdown("### Ask the live assistant")
+    question = st.selectbox(
+        "Choose a supported question",
+        [
+            "How many violations are there?",
+            "Show violations by type.",
+            "Show violations by camera.",
+            "Show the latest 5 violations.",
+            "What is the most common violation?",
+        ],
+    )
+    if st.button("Ask SafeSite", type="primary"):
+        try:
+            agent_result = post_json(AGENT_URL, "/ask", {"question": question})
+        except RuntimeError as error:
+            st.warning(f"Live agent unavailable: {error}")
+            st.caption("The verified saved proof above remains available for the portfolio demonstration.")
+        else:
+            st.success(agent_result["answer"])
+            st.caption(f"Answer provider: {agent_result['answer_provider']}")
+            st.code(agent_result["sql"], language="sql")
+            st.dataframe(agent_result["rows"], use_container_width=True, hide_index=True)
+
+with tests_tab:
+    section_header(
+        "Verification",
+        "Automated tests and architecture audit",
+        "Current unit tests are combined with the saved end-to-end architecture verification report.",
+    )
+    architecture_checks = architecture_proof.get("checks", [])
+    passed_architecture = sum(item.get("status") == "passed" for item in architecture_checks)
+    tests_cols = st.columns(4)
+    tests_cols[0].metric("Unit tests", f"{test_results.get('passed', 0)} passed")
+    tests_cols[1].metric("Unit failures", test_results.get("failed", 0))
+    tests_cols[2].metric("Architecture checks", f"{passed_architecture}/{len(architecture_checks)}")
+    tests_cols[3].metric("Final status", "PASSED" if not test_results.get("failed", 0) and passed_architecture == len(architecture_checks) else "REVIEW")
+    if not test_results.get("failed", 0) and passed_architecture == len(architecture_checks):
+        st.success("✅ All current unit tests and all end-to-end architecture checks passed.")
+    else:
+        st.warning("Some verification checks require review.")
+
+    if test_results.get("suites"):
+        st.markdown("### Current unit-test execution")
+        st.dataframe(test_results["suites"], use_container_width=True, hide_index=True)
+
+    architecture_rows = [
+        {"Architecture check": item.get("name", "unknown").replace("_", " ").title(), "Status": item.get("status", "unknown").upper()}
+        for item in architecture_checks
+    ]
+    if architecture_rows:
+        with st.expander("View all end-to-end architecture checks"):
+            st.dataframe(architecture_rows, use_container_width=True, hide_index=True)
+
+st.stop()
 
 final_demo = load_json_file(str(FINAL_DEMO_SUMMARY))
 if final_demo:

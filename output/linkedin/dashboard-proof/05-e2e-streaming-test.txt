@@ -1,0 +1,25 @@
+PS C:\Users\LEGION\Documents\safe site ai> .\scripts\test_streaming_e2e.ps1 -FrameCount 10
+
+SafeSite AI - full streaming pipeline end-to-end
+Run ID: e2e-20260917-211943 | Camera: camera-e2e-211943
+Scope: Kafka, MinIO, YOLO inference, tracking, FastAPI, PostgreSQL, duplicate protection
+
+[PASS] Docker Engine                          expected: reachable                          actual: reachable
+[PASS] Pipeline completion                    expected: completed                          actual: completed
+[PASS] API and database health                expected: healthy / reachable                actual: healthy / reachable
+[PASS] Kafka raw frames                       expected: 10                                 actual: 10
+[PASS] YOLO PPE output events                 expected: 10                                 actual: 10
+[PASS] Tracking output events                 expected: 10                                 actual: 10
+[PASS] Tracking frames processed              expected: 10                                 actual: 10
+[PASS] MinIO Bronze objects                   expected: 10                                 actual: 10
+[PASS] Candidate published to Kafka           expected: 1 message                          actual: 1 message
+[PASS] Kafka to FastAPI delivery              expected: published=1 (HTTP 201)             actual: published=1
+[PASS] PostgreSQL persistence                 expected: 1                                  actual: 1
+[PASS] FastAPI read-back                      expected: 1 matching violation               actual: 1 matching violation(s)
+[PASS] Duplicate replay response              expected: skipped_duplicate=1 (HTTP 200)     actual: skipped_duplicate=1
+[PASS] No duplicate database row              expected: 1                                  actual: 1
+
+------------------------------------------------------------------------------------------------------------------------------------
+E2E RESULT: PASSED | Assertions: 14 passed, 0 failed
+Duration: 247.16 seconds
+Report: data\final\e2e-streaming-e2e-20260917-211943.json

@@ -1,0 +1,24 @@
+PS C:\Users\LEGION\Documents\safe site ai> python scripts\create_test_terminal_proof.py
+
+SafeSite AI — automated verification
+Running grounded-agent, MLOps, monitoring, and data-quality test suites...
+
+[Grounded AI assistant] test_every_planned_query_passes_catalog_validation (test_agent.GroundedAgentTests.test_every_planne... ... ok
+[Grounded AI assistant] test_http_api_exposes_grounded_sql_and_rejects_writes (test_agent.GroundedAgentTests.test_http_api_... ... ok
+[Grounded AI assistant] test_model_failure_uses_deterministic_answer (test_agent.GroundedAgentTests.test_model_failure_uses... ... ok
+[Grounded AI assistant] test_total_question_runs_approved_select (test_agent.GroundedAgentTests.test_total_question_runs_ap... ... ok
+[Grounded AI assistant] test_unknown_question_is_rejected (test_agent.GroundedAgentTests.test_unknown_question_is_rejected) ... ok
+[Grounded AI assistant] test_vision_endpoint_restricts_paths_to_data_root (test_agent.GroundedAgentTests.test_vision_endpoi... ... ok
+[Grounded AI assistant] test_write_request_is_rejected_before_database (test_agent.GroundedAgentTests.test_write_request_is... ... ok
+[MLflow model comparison] test_higher_map50_95_wins (test_compare_ppe_runs.RunComparisonTests.test_higher_map50_95_wins) ... ok
+[MLflow model comparison] test_metric_names_are_mlflow_safe (test_compare_ppe_runs.RunComparisonTests.test_metric_names_are... ... ok
+[MLflow model comparison] test_recall_breaks_equal_map_tie (test_compare_ppe_runs.RunComparisonTests.test_recall_breaks_equ... ... ok
+[Monitoring and data quality] test_large_distribution_change_is_detected (test_analyze_drift.DriftAnalysisTests.test_large_... ... ok
+[Monitoring and data quality] test_same_dataset_is_stable (test_analyze_drift.DriftAnalysisTests.test_same_dataset_is_stable) ... ok
+[Monitoring and data quality] test_bad_confidence_and_type_fail (test_validate_events.GreatExpectationsTests.test_bad_confi... ... ok
+[Monitoring and data quality] test_valid_events_pass (test_validate_events.GreatExpectationsTests.test_valid_events_pass) ... ok
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+Ran 14 tests in 10.177s
+
+OK — 14 passed, 0 failed
