@@ -7,6 +7,7 @@ from urllib.request import Request, urlopen
 import json
 from datetime import datetime, timezone
 
+import pandas as pd
 import streamlit as st
 
 
@@ -40,6 +41,9 @@ NO_HELMET_REVIEW_SUMMARY = DATA_ROOT / "evaluation" / "no-helmet-construction-pr
 FINAL_DEMO_SUMMARY = DATA_ROOT / "final-demo" / "summary.json"
 GOLD_SUMMARY = DATA_ROOT / "lake" / "gold" / "parquet" / "aggregation-summary.json"
 GOLD_QUALITY_REPORT = DATA_ROOT / "lake" / "gold" / "parquet" / "quality-report.json"
+GOLD_FRAMES = DATA_ROOT / "lake" / "gold" / "parquet" / "frames.parquet"
+GOLD_WORKER_EVIDENCE = DATA_ROOT / "lake" / "gold" / "parquet" / "worker_evidence.parquet"
+GOLD_DAILY_CAMERA_SUMMARY = DATA_ROOT / "lake" / "gold" / "parquet" / "daily_camera_summary.parquet"
 EVENT_QUALITY_REPORT = DATA_ROOT / "monitoring" / "event-quality-report.json"
 AGENT_PROOF = DATA_ROOT / "agent" / "block31-database-proof.json"
 ARCHITECTURE_PROOF = DATA_ROOT / "final" / "final-architecture-proof.json"
@@ -149,10 +153,122 @@ def load_quality_report() -> dict | None:
         return None
 
 
+@st.cache_data(ttl=30)
+def load_parquet_file(path_value: str) -> pd.DataFrame:
+    path = Path(path_value)
+    if not path.is_file():
+        return pd.DataFrame()
+    return pd.read_parquet(path)
+
+
+def parse_count_json(value: object) -> dict[str, int]:
+    if isinstance(value, dict):
+        return {str(key): int(count) for key, count in value.items()}
+    if not value:
+        return {}
+    try:
+        decoded = json.loads(str(value))
+    except json.JSONDecodeError:
+        return {}
+    return {str(key): int(count) for key, count in decoded.items()}
+
+
+def class_count_rows(daily_summary: pd.DataFrame) -> list[dict]:
+    totals: dict[str, int] = {}
+    if daily_summary.empty or "association_class_counts_json" not in daily_summary:
+        return []
+    for raw_value in daily_summary["association_class_counts_json"].dropna():
+        for class_name, count in parse_count_json(raw_value).items():
+            totals[class_name] = totals.get(class_name, 0) + count
+    return [
+        {"PPE class": class_name.replace("_", " ").title(), "Detections": count}
+        for class_name, count in sorted(totals.items(), key=lambda item: item[1], reverse=True)
+    ]
+
+
+def frame_timeline_rows(frames: pd.DataFrame) -> pd.DataFrame:
+    if frames.empty or "captured_at" not in frames:
+        return pd.DataFrame()
+    timeline = frames.copy()
+    timeline["captured_at"] = pd.to_datetime(timeline["captured_at"], errors="coerce", utc=True)
+    timeline = timeline.dropna(subset=["captured_at"])
+    if timeline.empty:
+        return pd.DataFrame()
+    timeline["Time"] = timeline["captured_at"].dt.floor("min")
+    return (
+        timeline.groupby("Time", as_index=False)
+        .agg(
+            Frames=("event_id", "count"),
+            Tracked_people=("tracked_people", "sum"),
+            Candidate_events=("candidate_count", "sum"),
+        )
+        .rename(
+            columns={
+                "Tracked_people": "Tracked people",
+                "Candidate_events": "Candidate events",
+            }
+        )
+    )
+
+
+def safety_score(worker_evidence: pd.DataFrame) -> float | None:
+    if worker_evidence.empty or "has_violation_evidence" not in worker_evidence:
+        return None
+    total = len(worker_evidence)
+    if total == 0:
+        return None
+    violation_rows = int(worker_evidence["has_violation_evidence"].fillna(False).sum())
+    return (total - violation_rows) / total
+
+
+def violation_type_rows(events: list[dict]) -> list[dict]:
+    labels = {
+        "NO_HELMET": "No helmet",
+        "NO_VEST": "No vest",
+        "NO_MASK": "No mask",
+    }
+    counts = {key: 0 for key in labels}
+    for event in events:
+        violation_type = str(event.get("violation_type", "UNKNOWN"))
+        counts[violation_type] = counts.get(violation_type, 0) + 1
+    return [
+        {"Violation type": labels.get(key, format_violation_type(key)), "Count": count}
+        for key, count in counts.items()
+    ]
+
+
+def violation_camera_rows(events: list[dict]) -> list[dict]:
+    counts: dict[str, int] = {}
+    for event in events:
+        camera_id = str(event.get("camera_id", "unknown-camera"))
+        counts[camera_id] = counts.get(camera_id, 0) + 1
+    return [
+        {"Camera": camera_id, "Violations": count}
+        for camera_id, count in sorted(counts.items(), key=lambda item: item[1], reverse=True)
+    ]
+
+
+def violation_time_rows(events: list[dict], frequency: str = "D") -> pd.DataFrame:
+    if not events:
+        return pd.DataFrame()
+    rows = []
+    for event in events:
+        occurred_at = pd.to_datetime(event.get("occurred_at"), errors="coerce", utc=True)
+        if pd.isna(occurred_at):
+            continue
+        rows.append({"Time": occurred_at, "Violations": 1})
+    if not rows:
+        return pd.DataFrame()
+    frame = pd.DataFrame(rows)
+    frame["Time"] = frame["Time"].dt.floor(frequency)
+    return frame.groupby("Time", as_index=False)["Violations"].sum()
+
+
 def format_violation_type(value: str) -> str:
     labels = {
         "NO_HELMET": "No helmet",
         "NO_VEST": "No safety vest",
+        "NO_MASK": "No mask",
         "NO_GOGGLE": "No safety goggles",
         "NO_BOOTS": "No safety boots",
     }
@@ -429,6 +545,19 @@ event_quality = load_json_file(str(EVENT_QUALITY_REPORT)) or {}
 agent_proof = load_json_file(str(AGENT_PROOF)) or {}
 architecture_proof = load_json_file(str(ARCHITECTURE_PROOF)) or {}
 test_results = load_json_file(str(TEST_RESULTS)) or {}
+gold_frames = load_parquet_file(str(GOLD_FRAMES))
+gold_worker_evidence = load_parquet_file(str(GOLD_WORKER_EVIDENCE))
+gold_daily_summary = load_parquet_file(str(GOLD_DAILY_CAMERA_SUMMARY))
+try:
+    summary = fetch_json("/stats/summary")
+    all_events = fetch_json("/violations", {"limit": 200})
+    api_available = True
+    api_error = None
+except RuntimeError as error:
+    summary = {"total": 0}
+    all_events = []
+    api_available = False
+    api_error = str(error)
 
 proof_tab, analytics_tab, assistant_tab, tests_tab = st.tabs(
     ["🛡️ Safety Proof", "📊 Analytics", "🤖 AI Assistant", "✅ Tests"]
@@ -472,16 +601,125 @@ with proof_tab:
 
 with analytics_tab:
     section_header(
-        "Gold analytics",
-        "Validated analytics-ready safety data",
-        "Airflow aggregates tracking records into Parquet, then quality rules verify the result before reporting.",
+        "Safety analytics",
+        "Operational view built from Gold Parquet data",
+        "Airflow aggregates tracking records into analytics-ready tables for safety KPIs, trends, and quality proof.",
     )
+    total_frames = int(gold_summary.get("frame_row_count", 0))
+    worker_rows = int(gold_summary.get("worker_evidence_row_count", 0))
+    unique_tracks = (
+        int(gold_worker_evidence["track_id"].nunique())
+        if not gold_worker_evidence.empty and "track_id" in gold_worker_evidence
+        else 0
+    )
+    violation_evidence_rows = (
+        int(gold_worker_evidence["has_violation_evidence"].fillna(False).sum())
+        if not gold_worker_evidence.empty and "has_violation_evidence" in gold_worker_evidence
+        else 0
+    )
+    safety_score_value = safety_score(gold_worker_evidence)
+
     analytics_cols = st.columns(4)
-    analytics_cols[0].metric("Frames analyzed", f"{gold_summary.get('frame_row_count', 0):,}")
-    analytics_cols[1].metric("Worker evidence rows", f"{gold_summary.get('worker_evidence_row_count', 0):,}")
-    analytics_cols[2].metric("Gold checks", f"{gold_quality.get('check_count', 0)}/{gold_quality.get('check_count', 0)} passed")
-    analytics_cols[3].metric("Event checks", f"{event_quality.get('expectation_count', 0)}/{event_quality.get('expectation_count', 0)} passed")
-    st.success("✅ Gold Parquet data is aggregated and every recorded quality check passed.")
+    analytics_cols[0].metric("Frames analyzed", f"{total_frames:,}")
+    analytics_cols[1].metric("Tracked workers", f"{unique_tracks:,}")
+    analytics_cols[2].metric("Worker evidence rows", f"{worker_rows:,}")
+    analytics_cols[3].metric("Safety score", format_percent(safety_score_value))
+
+    risk_cols = st.columns(4)
+    risk_cols[0].metric("Violation evidence rows", f"{violation_evidence_rows:,}")
+    risk_cols[1].metric("Candidate events", f"{int(gold_daily_summary['candidate_count'].sum()) if not gold_daily_summary.empty and 'candidate_count' in gold_daily_summary else 0:,}")
+    risk_cols[2].metric("Cameras represented", f"{gold_daily_summary['camera_id'].nunique() if not gold_daily_summary.empty and 'camera_id' in gold_daily_summary else 0:,}")
+    risk_cols[3].metric("Gold checks", f"{gold_quality.get('check_count', 0)}/{gold_quality.get('check_count', 0)} passed")
+
+    st.success("Gold analytics are available: frame activity, worker evidence, camera KPIs, PPE distribution, and data-quality proof.")
+
+    st.markdown("### Recorded violations from PostgreSQL")
+    if not api_available:
+        st.warning(f"FastAPI is offline, so recorded-violation analytics are hidden. {api_error}")
+    elif not all_events:
+        st.info("No violation records are stored in PostgreSQL yet.")
+    else:
+        violation_cols = st.columns([1, 1])
+        with violation_cols[0]:
+            st.markdown("#### Violations by type")
+            type_rows = violation_type_rows(all_events)
+            type_frame = pd.DataFrame(type_rows).set_index("Violation type")
+            st.bar_chart(type_frame, use_container_width=True)
+            st.dataframe(type_rows, use_container_width=True, hide_index=True)
+        with violation_cols[1]:
+            st.markdown("#### Violations by camera")
+            camera_rows = violation_camera_rows(all_events)
+            if camera_rows:
+                camera_frame = pd.DataFrame(camera_rows).set_index("Camera")
+                st.bar_chart(camera_frame, use_container_width=True)
+                st.dataframe(camera_rows, use_container_width=True, hide_index=True)
+            else:
+                st.info("No camera-level violation records are available.")
+
+        st.markdown("#### Violations over time")
+        trend_grain = st.radio(
+            "Trend granularity",
+            ["Daily", "Hourly"],
+            horizontal=True,
+            help="Daily is better for long periods. Hourly is better for demo runs.",
+        )
+        trend_frequency = "D" if trend_grain == "Daily" else "h"
+        trend_rows = violation_time_rows(all_events, trend_frequency)
+        if not trend_rows.empty:
+            chart_rows = trend_rows.copy()
+            time_format = "%Y-%m-%d" if trend_grain == "Daily" else "%Y-%m-%d %H:00"
+            chart_rows["Time"] = chart_rows["Time"].dt.strftime(time_format)
+            st.bar_chart(chart_rows.set_index("Time"), use_container_width=True)
+            st.dataframe(trend_rows, use_container_width=True, hide_index=True)
+        else:
+            st.info("No valid violation timestamps are available for the trend chart.")
+
+    chart_left, chart_right = st.columns([1, 1])
+    with chart_left:
+        st.markdown("### PPE detection distribution")
+        ppe_rows = class_count_rows(gold_daily_summary)
+        if ppe_rows:
+            ppe_frame = pd.DataFrame(ppe_rows).set_index("PPE class")
+            st.bar_chart(ppe_frame, use_container_width=True)
+            st.dataframe(ppe_rows, use_container_width=True, hide_index=True)
+        else:
+            st.warning("No PPE association counts are available.")
+    with chart_right:
+        st.markdown("### Camera safety summary")
+        if not gold_daily_summary.empty:
+            camera_columns = [
+                "camera_id",
+                "frame_count",
+                "tracked_person_observations",
+                "worker_evidence_rows",
+                "violation_evidence_rows",
+                "candidate_count",
+            ]
+            available_columns = [column for column in camera_columns if column in gold_daily_summary]
+            st.dataframe(
+                gold_daily_summary[available_columns].rename(
+                    columns={
+                        "camera_id": "Camera",
+                        "frame_count": "Frames",
+                        "tracked_person_observations": "Tracked observations",
+                        "worker_evidence_rows": "Worker evidence",
+                        "violation_evidence_rows": "Violation evidence",
+                        "candidate_count": "Candidates",
+                    }
+                ),
+                use_container_width=True,
+                hide_index=True,
+            )
+        else:
+            st.warning("No camera summary table is available.")
+
+    st.markdown("### Activity over time")
+    timeline_rows = frame_timeline_rows(gold_frames)
+    if not timeline_rows.empty:
+        st.line_chart(timeline_rows.set_index("Time")[["Frames", "Tracked people"]], use_container_width=True)
+        st.dataframe(timeline_rows, use_container_width=True, hide_index=True)
+    else:
+        st.warning("No timestamped frame timeline is available.")
 
     analytics_left, analytics_right = st.columns([3, 2])
     with analytics_left:
